@@ -1,105 +1,65 @@
 require 'net/http'
 require 'uri'
 
-def fmtId(string)
-  return string[1..(string.length - 2)]
-end
-
-def listenServer(idA, idB)
-
-  while true
-    
-    res = Net::HTTP.post_form(URI.parse('http://omegle.com/events'),
-                                         {'id'=>idA})
-
-    recA = res.body.split(/"(.*?)"/)
-
+class Omgl
+  def omg_connect
+    @stranger_a = {"id" => get_stranger, "name" => "Stranger A"}
+    puts @stranger_a["id"]
     sleep 1
 
-    res = Net::HTTP.post_form(URI.parse('http://omegle.com/events'),
-                                         {'id'=>idB})
+    @stranger_b = {"id" => get_stranger, "name" => "Stranger B"}
+    puts @stranger_b["id"]
 
-    recB = res.body.split(/"(.*?)"/)
-    
-    recA.each_index {|i|
-      if recA[i] == "waiting"
-        puts "Waiting for Stranger A..."
+    listen_server
+  end
 
-      elsif recA[i] == 'strangerDisconnected'
-        puts "Stranger A Disconnected!"
-        sleep 5
-        omgConnect()
+  private
 
-      elsif recA[i] == "connected"
-        puts "Found Stranger A"
+  def format_id(string)
+    string[1..-2]
+  end
 
-      elsif recA[i] == "typing"
-        Net::HTTP.post_form(URI.parse('http://omegle.com/typing'),
-                            {'id'=>idA})
+  def get_stranger
+    url = URI.parse('http://omegle.com/start')
+    req = Net::HTTP::Get.new(url.path)
+    res = Net::HTTP.start(url.host, url.port) {|http| http.request(req)}
+    format_id(res.body)
+  end
 
-      elsif recA[i] == "gotMessage"
-        talk idB, recA[i + 2]
-        puts "Stranger A: #{recA[i + 2]}"
+  def listen_server
+    while true
+      res = Net::HTTP.post_form(URI.parse('http://omegle.com/events'), {"id" => @stranger_a["id"]})
+      res = res.body.split(/"(.*?)"/)
+      print_conversation(res, @stranger_a, @stranger_b)
 
+      res = Net::HTTP.post_form(URI.parse('http://omegle.com/events'), {"id" => @stranger_b["id"]})
+      res = res.body.split(/"(.*?)"/)
+      print_conversation(res, @stranger_b, @stranger_a)
+    end
+  end
+
+  def print_conversation(message, from, to)
+      message.each_index do |i|
+        if message[i] == "waiting"
+          puts "Waiting for #{from["name"]}..."
+        elsif message[i] == 'strangerDisconnected'
+          puts "#{from["name"]} Disconnected!"
+          sleep 5
+          omg_connect
+        elsif message[i] == "connected"
+          puts "Found #{from["name"]}"
+        elsif message[i] == "typing"
+          Net::HTTP.post_form(URI.parse('http://omegle.com/typing'), {"id" => to["id"]})
+        elsif message[i] == "gotMessage"
+          talk(to["id"], message[i + 2])
+          puts "#{from["name"]}: #{message[i + 2]}"
+        end
       end
-    }
+  end
 
-    recB.each_index {|i|
-      if recB[i] == "waiting"
-        puts "Waiting for Stranger B..."
-
-      elsif recB[i] == 'strangerDisconnected'
-        puts "Stranger B Disconnected!"
-        sleep 5
-        omgConnect()
-
-      elsif recB[i] == "connected"
-        puts "Found Stranger B"
-
-      elsif recB[i] == "typing"
-        Net::HTTP.post_form(URI.parse('http://omegle.com/typing'),
-                            {'id'=>idB})
-
-      elsif recB[i] == "gotMessage"
-        talk idA, recB[i + 2]
-        puts "Stranger B: #{recB[i + 2]}"
-
-      end
-    }
+  def talk(id, msg)
+    msgReq = Net::HTTP.post_form(URI.parse('http://omegle.com/send'), {"msg" => msg, "id" => id})
   end
 end
 
-def talk(id, msg)
-
-  msgReq = Net::HTTP.post_form(URI.parse('http://omegle.com/send'),
-                     {'msg'=>msg,'id'=>id})
-
-end
-
-def omgConnect()
-  url = URI.parse('http://omegle.com/start')
-  req = Net::HTTP::Get.new(url.path)
-  res = Net::HTTP.start(url.host, url.port) {|http|
-    http.request(req)
-  }
-  idA = fmtId(res.body)
-
-  puts idA
-  
-  sleep 1
-
-  url = URI.parse('http://omegle.com/start')
-  req = Net::HTTP::Get.new(url.path)
-  res = Net::HTTP.start(url.host, url.port) {|http|
-    http.request(req)
-  }
-  idB = fmtId(res.body)
-
-  puts idB
-
-  sleep 1
-
-  listenServer idA, idB
-end
-
-omgConnect
+Omgl.new.omg_connect
